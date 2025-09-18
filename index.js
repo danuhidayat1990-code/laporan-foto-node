@@ -11,9 +11,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // -------------------- Cloudinary Config --------------------
 cloudinary.config({
-  cloud_name: "YOUR_CLOUD_NAME",   // ganti sesuai akun Cloudinary
-  api_key: "YOUR_API_KEY",
-  api_secret: "YOUR_API_SECRET",
+  cloud_name: "ddzctmkri",   
+  api_key: "513619779369171",
+  api_secret: "WvqB1vsmRI1IBXFF8NqA9y6EYsM",
 });
 
 const storage = new CloudinaryStorage({
