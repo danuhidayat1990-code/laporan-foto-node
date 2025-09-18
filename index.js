@@ -11,9 +11,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // -------------------- Cloudinary Config --------------------
 cloudinary.config({
-  cloud_name: "ddzctmkri",   
-  api_key: "513619779369171",
-  api_secret: "WvqB1vsmRI1IBXFF8NqA9y6EYsM",
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
 const storage = new CloudinaryStorage({
@@ -44,56 +44,56 @@ function formatTanggal(tanggal) {
 // -------------------- Halaman Upload --------------------
 app.get("/", (req, res) => {
   res.send(`
-    <html>
-    <head>
-      <title>Upload Laporan</title>
-      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    </head>
-    <body class="bg-light p-4">
-      <div class="container">
-        <h2 class="mb-4">➕ Form Upload Laporan</h2>
-        <form action="/upload" method="post" enctype="multipart/form-data" class="card p-4 shadow-sm">
-          <div class="mb-3">
-            <label class="form-label">Foto</label>
-            <input type="file" name="foto" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Gardu</label>
-            <input type="text" name="gardu" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Kerusakan</label>
-            <input type="text" name="kerusakan" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Waktu Kerusakan</label>
-            <input type="datetime-local" name="waktuKerusakan" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Perbaikan</label>
-            <input type="text" name="perbaikan" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Waktu Selesai</label>
-            <input type="datetime-local" name="selesai" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Status</label>
-            <select name="status" class="form-select">
-              <option value="Selesai">Selesai</option>
-              <option value="Proses">Proses</option>
-              <option value="Pending">Pending</option>
-            </select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">By</label>
-            <input type="text" name="by" class="form-control" required>
-          </div>
-          <button type="submit" class="btn btn-primary">Upload</button>
-        </form>
-      </div>
-    </body>
-    </html>
+  <html>
+  <head>
+    <title>Upload Laporan</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  </head>
+  <body class="bg-light p-4">
+    <div class="container">
+      <h2 class="mb-4">➕ Form Upload Laporan</h2>
+      <form action="/upload" method="post" enctype="multipart/form-data" class="card p-4 shadow-sm">
+        <div class="mb-3">
+          <label class="form-label">Foto</label>
+          <input type="file" name="foto" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Gardu</label>
+          <input type="text" name="gardu" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Kerusakan</label>
+          <input type="text" name="kerusakan" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Waktu Kerusakan</label>
+          <input type="datetime-local" name="waktuKerusakan" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Perbaikan</label>
+          <input type="text" name="perbaikan" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Waktu Selesai</label>
+          <input type="datetime-local" name="selesai" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Status</label>
+          <select name="status" class="form-select">
+            <option value="Selesai">Selesai</option>
+            <option value="Proses">Proses</option>
+            <option value="Pending">Pending</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">By</label>
+          <input type="text" name="by" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+      </form>
+    </div>
+  </body>
+  </html>
   `);
 });
 
@@ -121,32 +121,32 @@ app.post("/upload", upload.single("foto"), (req, res) => {
 // -------------------- Daftar Laporan --------------------
 app.get("/laporan", (req, res) => {
   let html = `
-    <html>
-    <head>
-      <title>Daftar Laporan</title>
-      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    </head>
-    <body class="bg-light p-4">
-      <div class="container">
-        <h2 class="mb-4">📋 Daftar Laporan</h2>
-        <table class="table table-bordered table-striped table-hover align-middle">
-          <thead class="table-primary text-center">
-            <tr>
-              <th>No</th>
-              <th>Foto</th>
-              <th>Gardu</th>
-              <th>Kerusakan</th>
-              <th>Waktu Kerusakan</th>
-              <th>Perbaikan</th>
-              <th>Waktu Selesai</th>
-              <th>Status</th>
-              <th>By</th>
-              <th>Tanggal Upload</th>
-              <th>Edit</th>
-              <th>Delete</th>
-            </tr>
-          </thead>
-          <tbody>
+  <html>
+  <head>
+    <title>Daftar Laporan</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  </head>
+  <body class="bg-light p-4">
+    <div class="container">
+      <h2 class="mb-4">📋 Daftar Laporan</h2>
+      <table class="table table-bordered table-striped table-hover align-middle">
+        <thead class="table-primary text-center">
+          <tr>
+            <th>No</th>
+            <th>Foto</th>
+            <th>Gardu</th>
+            <th>Kerusakan</th>
+            <th>Waktu Kerusakan</th>
+            <th>Perbaikan</th>
+            <th>Waktu Selesai</th>
+            <th>Status</th>
+            <th>By</th>
+            <th>Tanggal Upload</th>
+            <th>Edit</th>
+            <th>Delete</th>
+          </tr>
+        </thead>
+        <tbody>
   `;
 
   laporan.forEach((item, index) => {
@@ -173,11 +173,14 @@ app.get("/laporan", (req, res) => {
   });
 
   html += `
-          </tbody>
-        </table>
-      </div>
-    </body>
-    </html>
+        </tbody>
+      </table>
+      <a href="/" class="btn btn-primary mt-3">➕ Upload Lagi</a>
+      <a href="/export/excel" class="btn btn-success mt-3 ms-2">💾 Export Excel</a>
+      <a href="/export/word" class="btn btn-secondary mt-3 ms-2">💾 Export Word</a>
+    </div>
+  </body>
+  </html>
   `;
   res.send(html);
 });
@@ -197,17 +200,53 @@ app.get("/edit/:id", (req, res) => {
   if (!item) return res.send("Data tidak ditemukan");
 
   res.send(`
-    <h2>Edit Laporan</h2>
-    <form action="/edit/${id}" method="post">
-      Gardu: <input name="gardu" value="${item.gardu}" /><br/>
-      Kerusakan: <input name="kerusakan" value="${item.kerusakan}" /><br/>
-      Perbaikan: <input name="perbaikan" value="${item.perbaikan}" /><br/>
-      Waktu Kerusakan: <input name="waktuKerusakan" type="datetime-local" value="${item.waktuKerusakan}" /><br/>
-      Waktu Selesai: <input name="selesai" type="datetime-local" value="${item.selesai}" /><br/>
-      Status: <input name="status" value="${item.status}" /><br/>
-      By: <input name="by" value="${item.by}" /><br/>
-      <button type="submit">Update</button>
-    </form>
+  <html>
+  <head>
+    <title>Edit Laporan</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  </head>
+  <body class="bg-light p-4">
+    <div class="container">
+      <h2 class="mb-4">✏️ Edit Laporan</h2>
+      <form action="/edit/${id}" method="post" class="card p-4 shadow-sm">
+        <div class="mb-3">
+          <label class="form-label">Gardu</label>
+          <input name="gardu" value="${item.gardu}" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Kerusakan</label>
+          <input name="kerusakan" value="${item.kerusakan}" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Waktu Kerusakan</label>
+          <input name="waktuKerusakan" type="datetime-local" value="${item.waktuKerusakan}" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Perbaikan</label>
+          <input name="perbaikan" value="${item.perbaikan}" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Waktu Selesai</label>
+          <input name="selesai" type="datetime-local" value="${item.selesai}" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Status</label>
+          <select name="status" class="form-select">
+            <option value="Selesai" ${item.status === "Selesai" ? "selected" : ""}>Selesai</option>
+            <option value="Proses" ${item.status === "Proses" ? "selected" : ""}>Proses</option>
+            <option value="Pending" ${item.status === "Pending" ? "selected" : ""}>Pending</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">By</label>
+          <input name="by" value="${item.by}" class="form-control">
+        </div>
+        <button type="submit" class="btn btn-success">Update</button>
+        <a href="/laporan" class="btn btn-secondary ms-2">Kembali</a>
+      </form>
+    </div>
+  </body>
+  </html>
   `);
 });
 
@@ -217,8 +256,13 @@ app.post("/edit/:id", (req, res) => {
   if (item) {
     const { gardu, kerusakan, perbaikan, selesai, status, by, waktuKerusakan } = req.body;
     Object.assign(item, {
-      gardu, kerusakan, perbaikan, selesai: formatTanggal(selesai),
-      status, by, waktuKerusakan: formatTanggal(waktuKerusakan)
+      gardu,
+      kerusakan,
+      perbaikan,
+      selesai: formatTanggal(selesai),
+      status,
+      by,
+      waktuKerusakan: formatTanggal(waktuKerusakan),
     });
   }
   res.redirect("/laporan");
@@ -288,4 +332,5 @@ app.get("/export/word", async (req, res) => {
 });
 
 // -------------------- Jalankan Server --------------------
-app.listen(3000, () => console.log("Server berjalan di http://localhost:3000"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server berjalan di http://localhost:${PORT}`));
