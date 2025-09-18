@@ -3,7 +3,8 @@ const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("cloudinary").v2;
 const ExcelJS = require("exceljs");
-const { Document, Packer, Paragraph, TextRun } = require("docx");
+const { Document, Packer, Paragraph, TextRun, Media } = require("docx");
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 const app = express();
 app.use(express.json());
@@ -23,7 +24,6 @@ const storage = new CloudinaryStorage({
     allowed_formats: ["jpg", "png", "jpeg"],
   },
 });
-
 const upload = multer({ storage });
 
 // -------------------- Data memori --------------------
@@ -268,14 +268,14 @@ app.post("/edit/:id", (req, res) => {
   res.redirect("/laporan");
 });
 
-// -------------------- Export Excel --------------------
+// -------------------- Export Excel & Word --------------------
 app.get("/export/excel", async (req, res) => {
   const workbook = new ExcelJS.Workbook();
   const ws = workbook.addWorksheet("Laporan");
 
   ws.columns = [
     { header: "No", key: "no", width: 5 },
-    { header: "Foto URL", key: "fotoURL", width: 30 },
+    { header: "Foto", key: "foto", width: 30 },
     { header: "Gardu", key: "gardu", width: 10 },
     { header: "Kerusakan", key: "kerusakan", width: 30 },
     { header: "Waktu Kerusakan", key: "waktuKerusakan", width: 20 },
@@ -286,48 +286,71 @@ app.get("/export/excel", async (req, res) => {
     { header: "Tanggal Upload", key: "tanggalUpload", width: 25 },
   ];
 
-  laporan.forEach((item, index) => {
-    ws.addRow({ no: index + 1, ...item });
-  });
+  for (let i = 0; i < laporan.length; i++) {
+    const item = laporan[i];
+    const row = ws.addRow({
+      no: i + 1,
+      foto: "",
+      gardu: item.gardu,
+      kerusakan: item.kerusakan,
+      waktuKerusakan: item.waktuKerusakan,
+      perbaikan: item.perbaikan,
+      selesai: item.selesai,
+      status: item.status,
+      by: item.by,
+      tanggalUpload: item.tanggalUpload
+    });
 
-  res.setHeader(
-    "Content-Type",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  );
-  res.setHeader("Content-Disposition", "attachment; filename=laporan.xlsx");
+    try {
+      const response = await fetch(item.fotoURL);
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const imageId = workbook.addImage({ buffer, extension: 'jpg' });
+      ws.addImage(imageId, { tl: { col: 1, row: row.number - 1 }, ext: { width: 100, height: 80 } });
+    } catch(err){ console.log("Gagal fetch image Excel:", err); }
+  }
+
+  res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition","attachment; filename=laporan.xlsx");
   await workbook.xlsx.write(res);
   res.end();
 });
 
-// -------------------- Export Word --------------------
-app.get("/export/word", async (req, res) => {
+app.get("/export/word", async (req,res) => {
   const doc = new Document({
     sections: [
       {
         properties: {},
-        children: laporan.map((item, index) =>
-          new Paragraph({
-            children: [
-              new TextRun(`No: ${index + 1}`),
-              new TextRun(`\nFoto URL: ${item.fotoURL}`),
-              new TextRun(`\nGardu: ${item.gardu}`),
-              new TextRun(`\nKerusakan: ${item.kerusakan}`),
-              new TextRun(`\nWaktu Kerusakan: ${item.waktuKerusakan}`),
-              new TextRun(`\nPerbaikan: ${item.perbaikan}`),
-              new TextRun(`\nWaktu Selesai: ${item.selesai}`),
-              new TextRun(`\nStatus: ${item.status}`),
-              new TextRun(`\nBy: ${item.by}`),
-              new TextRun(`\nTanggal Upload: ${item.tanggalUpload}`),
-              new TextRun("\n---------------------------\n"),
-            ],
+        children: await Promise.all(
+          laporan.map(async (item, index) => {
+            let children = [
+              new Paragraph(`No: ${index + 1}`),
+              new Paragraph(`Gardu: ${item.gardu}`),
+              new Paragraph(`Kerusakan: ${item.kerusakan}`),
+              new Paragraph(`Waktu Kerusakan: ${item.waktuKerusakan}`),
+              new Paragraph(`Perbaikan: ${item.perbaikan}`),
+              new Paragraph(`Waktu Selesai: ${item.selesai}`),
+              new Paragraph(`Status: ${item.status}`),
+              new Paragraph(`By: ${item.by}`),
+              new Paragraph(`Tanggal Upload: ${item.tanggalUpload}`),
+              new Paragraph("----------------------------"),
+            ];
+
+            try {
+              const response = await fetch(item.fotoURL);
+              const buffer = Buffer.from(await response.arrayBuffer());
+              const image = Media.addImage(doc, buffer, 200, 150);
+              children.splice(1, 0, image);
+            } catch(err){ console.log("Gagal fetch image Word:", err); }
+
+            return children;
           })
-        ),
-      },
-    ],
+        ).then(arr => arr.flat())
+      }
+    ]
   });
 
   const buffer = await Packer.toBuffer(doc);
-  res.setHeader("Content-Disposition", "attachment; filename=laporan.docx");
+  res.setHeader("Content-Disposition","attachment; filename=laporan.docx");
   res.send(buffer);
 });
 
