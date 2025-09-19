@@ -4,15 +4,37 @@ const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("cloudinary").v2;
 const ExcelJS = require("exceljs");
 const { Document, Packer, Paragraph, TextRun, Media } = require("docx");
+const mongoose = require("mongoose");
 const axios = require("axios");
-const tmp = require("tmp");
-const fs = require("fs");
+require("dotenv").config();
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// -------------------- Cloudinary Config --------------------
+// -------------------- MongoDB --------------------
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
+
+const laporanSchema = new mongoose.Schema({
+  fotoURL: String,
+  filename: String,
+  originalname: String,
+  gardu: String,
+  kerusakan: String,
+  perbaikan: String,
+  selesai: String,
+  waktuKerusakan: String,
+  status: String,
+  by: String,
+  tanggalUpload: String,
+});
+
+const Laporan = mongoose.model("Laporan", laporanSchema);
+
+// -------------------- Cloudinary --------------------
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -28,9 +50,6 @@ const storage = new CloudinaryStorage({
 });
 const upload = multer({ storage });
 
-// -------------------- Data memori --------------------
-let laporan = [];
-
 // -------------------- Helper --------------------
 function formatTanggal(tanggal) {
   if (!tanggal) return "-";
@@ -43,7 +62,7 @@ function formatTanggal(tanggal) {
   });
 }
 
-// -------------------- Halaman Upload --------------------
+// -------------------- Upload Form --------------------
 app.get("/", (req, res) => {
   res.send(`
   <html>
@@ -100,10 +119,10 @@ app.get("/", (req, res) => {
 });
 
 // -------------------- Upload Endpoint --------------------
-app.post("/upload", upload.single("foto"), (req, res) => {
+app.post("/upload", upload.single("foto"), async (req, res) => {
   const { gardu, kerusakan, perbaikan, selesai, status, by, waktuKerusakan } = req.body;
-  const data = {
-    id: Date.now(),
+
+  const data = new Laporan({
     fotoURL: req.file.path,
     filename: req.file.filename,
     originalname: req.file.originalname,
@@ -115,13 +134,16 @@ app.post("/upload", upload.single("foto"), (req, res) => {
     status,
     by,
     tanggalUpload: new Date().toLocaleString("id-ID"),
-  };
-  laporan.push(data);
+  });
+
+  await data.save();
   res.redirect("/laporan");
 });
 
 // -------------------- Daftar Laporan --------------------
-app.get("/laporan", (req, res) => {
+app.get("/laporan", async (req, res) => {
+  const laporan = await Laporan.find().lean();
+
   let html = `
   <html>
   <head>
@@ -168,8 +190,8 @@ app.get("/laporan", (req, res) => {
         </td>
         <td>${item.by}</td>
         <td>${item.tanggalUpload}</td>
-        <td><a href="/edit/${item.id}" class="btn btn-warning btn-sm">Edit</a></td>
-        <td><a href="/delete/${item.id}" class="btn btn-danger btn-sm" onclick="return confirm('Yakin hapus?')">Delete</a></td>
+        <td><a href="/edit/${item._id}" class="btn btn-warning btn-sm">Edit</a></td>
+        <td><a href="/delete/${item._id}" class="btn btn-danger btn-sm" onclick="return confirm('Yakin hapus?')">Delete</a></td>
       </tr>
     `;
   });
@@ -188,17 +210,14 @@ app.get("/laporan", (req, res) => {
 });
 
 // -------------------- Delete --------------------
-app.get("/delete/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-  const index = laporan.findIndex((item) => item.id === id);
-  if (index !== -1) laporan.splice(index, 1);
+app.get("/delete/:id", async (req, res) => {
+  await Laporan.findByIdAndDelete(req.params.id);
   res.redirect("/laporan");
 });
 
 // -------------------- Edit --------------------
-app.get("/edit/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-  const item = laporan.find((item) => item.id === id);
+app.get("/edit/:id", async (req, res) => {
+  const item = await Laporan.findById(req.params.id).lean();
   if (!item) return res.send("Data tidak ditemukan");
 
   res.send(`
@@ -210,7 +229,7 @@ app.get("/edit/:id", (req, res) => {
   <body class="bg-light p-4">
     <div class="container">
       <h2 class="mb-4">✏️ Edit Laporan</h2>
-      <form action="/edit/${id}" method="post" class="card p-4 shadow-sm">
+      <form action="/edit/${item._id}" method="post" class="card p-4 shadow-sm">
         <div class="mb-3">
           <label class="form-label">Gardu</label>
           <input name="gardu" value="${item.gardu}" class="form-control" required>
@@ -221,7 +240,7 @@ app.get("/edit/:id", (req, res) => {
         </div>
         <div class="mb-3">
           <label class="form-label">Waktu Kerusakan</label>
-          <input name="waktuKerusakan" type="datetime-local" value="${item.waktuKerusakan}" class="form-control">
+          <input name="waktuKerusakan" type="datetime-local" class="form-control">
         </div>
         <div class="mb-3">
           <label class="form-label">Perbaikan</label>
@@ -229,7 +248,7 @@ app.get("/edit/:id", (req, res) => {
         </div>
         <div class="mb-3">
           <label class="form-label">Waktu Selesai</label>
-          <input name="selesai" type="datetime-local" value="${item.selesai}" class="form-control">
+          <input name="selesai" type="datetime-local" class="form-control">
         </div>
         <div class="mb-3">
           <label class="form-label">Status</label>
@@ -252,26 +271,23 @@ app.get("/edit/:id", (req, res) => {
   `);
 });
 
-app.post("/edit/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-  const item = laporan.find((item) => item.id === id);
-  if (item) {
-    const { gardu, kerusakan, perbaikan, selesai, status, by, waktuKerusakan } = req.body;
-    Object.assign(item, {
-      gardu,
-      kerusakan,
-      perbaikan,
-      selesai: formatTanggal(selesai),
-      status,
-      by,
-      waktuKerusakan: formatTanggal(waktuKerusakan),
-    });
-  }
+app.post("/edit/:id", async (req, res) => {
+  const { gardu, kerusakan, perbaikan, selesai, status, by, waktuKerusakan } = req.body;
+  await Laporan.findByIdAndUpdate(req.params.id, {
+    gardu,
+    kerusakan,
+    perbaikan,
+    selesai: formatTanggal(selesai),
+    status,
+    by,
+    waktuKerusakan: formatTanggal(waktuKerusakan),
+  });
   res.redirect("/laporan");
 });
 
 // -------------------- Export Excel --------------------
 app.get("/export/excel", async (req, res) => {
+  const laporan = await Laporan.find().lean();
   const workbook = new ExcelJS.Workbook();
   const ws = workbook.addWorksheet("Laporan");
 
@@ -305,13 +321,9 @@ app.get("/export/excel", async (req, res) => {
 
     try {
       const response = await axios.get(item.fotoURL, { responseType: "arraybuffer" });
-      const tmpFile = tmp.fileSync({ postfix: ".jpg" });
-      fs.writeFileSync(tmpFile.name, response.data);
-
-      const imageId = workbook.addImage({ filename: tmpFile.name, extension: "jpg" });
+      const buffer = Buffer.from(response.data, "binary");
+      const imageId = workbook.addImage({ buffer, extension: "jpg" });
       ws.addImage(imageId, { tl: { col: 1, row: row.number - 1 }, ext: { width: 100, height: 80 } });
-
-      tmpFile.removeCallback();
     } catch (err) {
       console.log("Gagal fetch image Excel:", err);
     }
@@ -328,6 +340,8 @@ app.get("/export/excel", async (req, res) => {
 
 // -------------------- Export Word --------------------
 app.get("/export/word", async (req, res) => {
+  const laporan = await Laporan.find().lean();
+
   const doc = new Document({
     sections: [
       {
@@ -335,9 +349,7 @@ app.get("/export/word", async (req, res) => {
         children: await Promise.all(
           laporan.map(async (item, index) => {
             let children = [
-              new Paragraph({
-                children: [new TextRun({ text: `No: ${index + 1}`, bold: true })],
-              }),
+              new Paragraph({ children: [new TextRun({ text: `No: ${index + 1}`, bold: true })] }),
             ];
 
             try {
@@ -373,6 +385,6 @@ app.get("/export/word", async (req, res) => {
   res.send(buffer);
 });
 
-// -------------------- Jalankan Server --------------------
+// -------------------- Run Server --------------------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server berjalan di http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
