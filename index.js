@@ -285,7 +285,7 @@ app.post("/edit/:id", async (req, res) => {
   res.redirect("/laporan");
 });
 
-// -------------------- Export Excel --------------------
+// -------------------- Export Excel (OPTIMIZE) --------------------
 app.get("/export/excel", async (req, res) => {
   const laporan = await Laporan.find().lean();
   const workbook = new ExcelJS.Workbook();
@@ -294,7 +294,7 @@ app.get("/export/excel", async (req, res) => {
   ws.columns = [
     { header: "No", key: "no", width: 5 },
     { header: "Foto", key: "foto", width: 30 },
-    { header: "Gardu", key: "gardu", width: 10 },
+    { header: "Gardu", key: "gardu", width: 15 },
     { header: "Kerusakan", key: "kerusakan", width: 30 },
     { header: "Waktu Kerusakan", key: "waktuKerusakan", width: 20 },
     { header: "Perbaikan", key: "perbaikan", width: 30 },
@@ -320,12 +320,20 @@ app.get("/export/excel", async (req, res) => {
     });
 
     try {
-      const response = await axios.get(item.fotoURL, { responseType: "arraybuffer" });
-      const buffer = Buffer.from(response.data, "binary");
-      const imageId = workbook.addImage({ buffer, extension: "jpg" });
-      ws.addImage(imageId, { tl: { col: 1, row: row.number - 1 }, ext: { width: 100, height: 80 } });
+      const urlKecil = item.fotoURL.replace(
+        "/upload/",
+        "/upload/w_200,h_150,c_fill,q_auto/"
+      );
+      const response = await axios.get(urlKecil, { responseType: "arraybuffer" });
+      const buffer = Buffer.from(response.data);
+
+      const imageId = workbook.addImage({ buffer, extension: "jpeg" });
+      ws.addImage(imageId, {
+        tl: { col: 1, row: row.number - 1 },
+        ext: { width: 100, height: 80 },
+      });
     } catch (err) {
-      console.log("Gagal fetch image Excel:", err);
+      console.log("⚠️ Gagal fetch image Excel:", err.message);
     }
   }
 
@@ -334,11 +342,12 @@ app.get("/export/excel", async (req, res) => {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
   res.setHeader("Content-Disposition", "attachment; filename=laporan.xlsx");
+
   await workbook.xlsx.write(res);
   res.end();
 });
 
-// -------------------- Export Word --------------------
+// -------------------- Export Word (OPTIMIZE) --------------------
 app.get("/export/word", async (req, res) => {
   const laporan = await Laporan.find().lean();
 
@@ -353,12 +362,16 @@ app.get("/export/word", async (req, res) => {
             ];
 
             try {
-              const response = await axios.get(item.fotoURL, { responseType: "arraybuffer" });
-              const buffer = Buffer.from(response.data, "binary");
+              const urlKecil = item.fotoURL.replace(
+                "/upload/",
+                "/upload/w_300,h_200,c_fill,q_auto/"
+              );
+              const response = await axios.get(urlKecil, { responseType: "arraybuffer" });
+              const buffer = Buffer.from(response.data);
               const image = Media.addImage(doc, buffer, 200, 150);
               children.push(new Paragraph(image));
             } catch (err) {
-              console.log("Gagal fetch image Word:", err);
+              console.log("⚠️ Gagal fetch image Word:", err.message);
             }
 
             children.push(
