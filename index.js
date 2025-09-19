@@ -6,6 +6,7 @@ const ExcelJS = require("exceljs");
 const { Document, Packer, Paragraph, TextRun, Media } = require("docx");
 const mongoose = require("mongoose");
 const axios = require("axios");
+const sharp = require("sharp");
 require("dotenv").config();
 
 const app = express();
@@ -62,66 +63,47 @@ function formatTanggal(tanggal) {
   });
 }
 
-// -------------------- Upload Form --------------------
+async function fetchAndCompressImage(url) {
+  try {
+    const response = await axios.get(url, { responseType: "arraybuffer" });
+    let buffer = Buffer.from(response.data, "binary");
+    // Kompres gambar biar gak gede
+    buffer = await sharp(buffer).resize(300).jpeg({ quality: 70 }).toBuffer();
+    return buffer;
+  } catch (err) {
+    console.log("⚠️ Gagal fetch image:", err.message);
+    return null;
+  }
+}
+
+// -------------------- Routes --------------------
 app.get("/", (req, res) => {
   res.send(`
   <html>
-  <head>
-    <title>Upload Laporan</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  </head>
-  <body class="bg-light p-4">
-    <div class="container">
-      <h2 class="mb-4">➕ Form Upload Laporan</h2>
-      <form action="/upload" method="post" enctype="multipart/form-data" class="card p-4 shadow-sm">
-        <div class="mb-3">
-          <label class="form-label">Foto</label>
-          <input type="file" name="foto" class="form-control" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Gardu</label>
-          <input type="text" name="gardu" class="form-control" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Kerusakan</label>
-          <input type="text" name="kerusakan" class="form-control" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Waktu Kerusakan</label>
-          <input type="datetime-local" name="waktuKerusakan" class="form-control" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Perbaikan</label>
-          <input type="text" name="perbaikan" class="form-control" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Waktu Selesai</label>
-          <input type="datetime-local" name="selesai" class="form-control" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Status</label>
-          <select name="status" class="form-select">
-            <option value="Selesai">Selesai</option>
-            <option value="Proses">Proses</option>
-            <option value="Pending">Pending</option>
-          </select>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">By</label>
-          <input type="text" name="by" class="form-control" required>
-        </div>
-        <button type="submit" class="btn btn-primary">Upload</button>
-      </form>
-    </div>
+  <head><title>Upload</title></head>
+  <body>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+      <input type="file" name="foto" required /><br/>
+      <input type="text" name="gardu" placeholder="Gardu" required /><br/>
+      <input type="text" name="kerusakan" placeholder="Kerusakan" required /><br/>
+      <input type="datetime-local" name="waktuKerusakan" required /><br/>
+      <input type="text" name="perbaikan" placeholder="Perbaikan" required /><br/>
+      <input type="datetime-local" name="selesai" required /><br/>
+      <select name="status">
+        <option value="Selesai">Selesai</option>
+        <option value="Proses">Proses</option>
+        <option value="Pending">Pending</option>
+      </select><br/>
+      <input type="text" name="by" placeholder="By" required /><br/>
+      <button type="submit">Upload</button>
+    </form>
   </body>
   </html>
   `);
 });
 
-// -------------------- Upload Endpoint --------------------
 app.post("/upload", upload.single("foto"), async (req, res) => {
   const { gardu, kerusakan, perbaikan, selesai, status, by, waktuKerusakan } = req.body;
-
   const data = new Laporan({
     fotoURL: req.file.path,
     filename: req.file.filename,
@@ -135,157 +117,23 @@ app.post("/upload", upload.single("foto"), async (req, res) => {
     by,
     tanggalUpload: new Date().toLocaleString("id-ID"),
   });
-
   await data.save();
   res.redirect("/laporan");
 });
 
-// -------------------- Daftar Laporan --------------------
 app.get("/laporan", async (req, res) => {
   const laporan = await Laporan.find().lean();
-
-  let html = `
-  <html>
-  <head>
-    <title>Daftar Laporan</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  </head>
-  <body class="bg-light p-4">
-    <div class="container">
-      <h2 class="mb-4">📋 Daftar Laporan</h2>
-      <table class="table table-bordered table-striped table-hover align-middle">
-        <thead class="table-primary text-center">
-          <tr>
-            <th>No</th>
-            <th>Foto</th>
-            <th>Gardu</th>
-            <th>Kerusakan</th>
-            <th>Waktu Kerusakan</th>
-            <th>Perbaikan</th>
-            <th>Waktu Selesai</th>
-            <th>Status</th>
-            <th>By</th>
-            <th>Tanggal Upload</th>
-            <th>Edit</th>
-            <th>Delete</th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
-
-  laporan.forEach((item, index) => {
-    html += `
-      <tr>
-        <td class="text-center">${index + 1}</td>
-        <td><img src="${item.fotoURL}" class="img-thumbnail" width="100"/></td>
-        <td>${item.gardu}</td>
-        <td>${item.kerusakan}</td>
-        <td>${item.waktuKerusakan}</td>
-        <td>${item.perbaikan}</td>
-        <td>${item.selesai}</td>
-        <td class="text-center">
-          <span class="badge ${item.status === "Selesai" ? "bg-success" : item.status === "Proses" ? "bg-warning text-dark" : "bg-secondary"}">
-            ${item.status}
-          </span>
-        </td>
-        <td>${item.by}</td>
-        <td>${item.tanggalUpload}</td>
-        <td><a href="/edit/${item._id}" class="btn btn-warning btn-sm">Edit</a></td>
-        <td><a href="/delete/${item._id}" class="btn btn-danger btn-sm" onclick="return confirm('Yakin hapus?')">Delete</a></td>
-      </tr>
-    `;
+  let html = `<h2>Daftar Laporan</h2><table border="1" cellpadding="5"><tr>
+  <th>No</th><th>Foto</th><th>Gardu</th><th>Kerusakan</th><th>Selesai</th></tr>`;
+  laporan.forEach((item, i) => {
+    html += `<tr><td>${i + 1}</td><td><img src="${item.fotoURL}" width="100"/></td>
+    <td>${item.gardu}</td><td>${item.kerusakan}</td><td>${item.selesai}</td></tr>`;
   });
-
-  html += `
-        </tbody>
-      </table>
-      <a href="/" class="btn btn-primary mt-3">➕ Upload Lagi</a>
-      <a href="/export/excel" class="btn btn-success mt-3 ms-2">💾 Export Excel</a>
-      <a href="/export/word" class="btn btn-secondary mt-3 ms-2">💾 Export Word</a>
-    </div>
-  </body>
-  </html>
-  `;
+  html += `</table><a href="/export/excel">Export Excel</a> | <a href="/export/word">Export Word</a>`;
   res.send(html);
 });
 
-// -------------------- Delete --------------------
-app.get("/delete/:id", async (req, res) => {
-  await Laporan.findByIdAndDelete(req.params.id);
-  res.redirect("/laporan");
-});
-
-// -------------------- Edit --------------------
-app.get("/edit/:id", async (req, res) => {
-  const item = await Laporan.findById(req.params.id).lean();
-  if (!item) return res.send("Data tidak ditemukan");
-
-  res.send(`
-  <html>
-  <head>
-    <title>Edit Laporan</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  </head>
-  <body class="bg-light p-4">
-    <div class="container">
-      <h2 class="mb-4">✏️ Edit Laporan</h2>
-      <form action="/edit/${item._id}" method="post" class="card p-4 shadow-sm">
-        <div class="mb-3">
-          <label class="form-label">Gardu</label>
-          <input name="gardu" value="${item.gardu}" class="form-control" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Kerusakan</label>
-          <input name="kerusakan" value="${item.kerusakan}" class="form-control" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Waktu Kerusakan</label>
-          <input name="waktuKerusakan" type="datetime-local" class="form-control">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Perbaikan</label>
-          <input name="perbaikan" value="${item.perbaikan}" class="form-control">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Waktu Selesai</label>
-          <input name="selesai" type="datetime-local" class="form-control">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Status</label>
-          <select name="status" class="form-select">
-            <option value="Selesai" ${item.status === "Selesai" ? "selected" : ""}>Selesai</option>
-            <option value="Proses" ${item.status === "Proses" ? "selected" : ""}>Proses</option>
-            <option value="Pending" ${item.status === "Pending" ? "selected" : ""}>Pending</option>
-          </select>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">By</label>
-          <input name="by" value="${item.by}" class="form-control">
-        </div>
-        <button type="submit" class="btn btn-success">Update</button>
-        <a href="/laporan" class="btn btn-secondary ms-2">Kembali</a>
-      </form>
-    </div>
-  </body>
-  </html>
-  `);
-});
-
-app.post("/edit/:id", async (req, res) => {
-  const { gardu, kerusakan, perbaikan, selesai, status, by, waktuKerusakan } = req.body;
-  await Laporan.findByIdAndUpdate(req.params.id, {
-    gardu,
-    kerusakan,
-    perbaikan,
-    selesai: formatTanggal(selesai),
-    status,
-    by,
-    waktuKerusakan: formatTanggal(waktuKerusakan),
-  });
-  res.redirect("/laporan");
-});
-
-// -------------------- Export Excel (OPTIMIZE) --------------------
+// -------------------- Export Excel --------------------
 app.get("/export/excel", async (req, res) => {
   const laporan = await Laporan.find().lean();
   const workbook = new ExcelJS.Workbook();
@@ -293,99 +141,48 @@ app.get("/export/excel", async (req, res) => {
 
   ws.columns = [
     { header: "No", key: "no", width: 5 },
-    { header: "Foto", key: "foto", width: 30 },
+    { header: "Foto", key: "foto", width: 20 },
     { header: "Gardu", key: "gardu", width: 15 },
     { header: "Kerusakan", key: "kerusakan", width: 30 },
-    { header: "Waktu Kerusakan", key: "waktuKerusakan", width: 20 },
-    { header: "Perbaikan", key: "perbaikan", width: 30 },
-    { header: "Waktu Selesai", key: "selesai", width: 20 },
-    { header: "Status", key: "status", width: 15 },
-    { header: "By", key: "by", width: 15 },
-    { header: "Tanggal Upload", key: "tanggalUpload", width: 25 },
+    { header: "Selesai", key: "selesai", width: 20 },
   ];
 
   for (let i = 0; i < laporan.length; i++) {
     const item = laporan[i];
-    const row = ws.addRow({
-      no: i + 1,
-      foto: "",
-      gardu: item.gardu,
-      kerusakan: item.kerusakan,
-      waktuKerusakan: item.waktuKerusakan,
-      perbaikan: item.perbaikan,
-      selesai: item.selesai,
-      status: item.status,
-      by: item.by,
-      tanggalUpload: item.tanggalUpload,
-    });
-
-    try {
-      const urlKecil = item.fotoURL.replace(
-        "/upload/",
-        "/upload/w_200,h_150,c_fill,q_auto/"
-      );
-      const response = await axios.get(urlKecil, { responseType: "arraybuffer" });
-      const buffer = Buffer.from(response.data);
-
+    const row = ws.addRow({ no: i + 1, gardu: item.gardu, kerusakan: item.kerusakan, selesai: item.selesai });
+    const buffer = await fetchAndCompressImage(item.fotoURL);
+    if (buffer) {
       const imageId = workbook.addImage({ buffer, extension: "jpeg" });
-      ws.addImage(imageId, {
-        tl: { col: 1, row: row.number - 1 },
-        ext: { width: 100, height: 80 },
-      });
-    } catch (err) {
-      console.log("⚠️ Gagal fetch image Excel:", err.message);
+      ws.addImage(imageId, { tl: { col: 1, row: row.number - 1 }, ext: { width: 80, height: 60 } });
     }
   }
 
-  res.setHeader(
-    "Content-Type",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  );
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", "attachment; filename=laporan.xlsx");
-
   await workbook.xlsx.write(res);
   res.end();
 });
 
-// -------------------- Export Word (OPTIMIZE) --------------------
+// -------------------- Export Word --------------------
 app.get("/export/word", async (req, res) => {
   const laporan = await Laporan.find().lean();
-
   const doc = new Document({
     sections: [
       {
-        properties: {},
         children: await Promise.all(
-          laporan.map(async (item, index) => {
-            let children = [
-              new Paragraph({ children: [new TextRun({ text: `No: ${index + 1}`, bold: true })] }),
+          laporan.map(async (item, i) => {
+            const children = [
+              new Paragraph({ children: [new TextRun({ text: `No: ${i + 1}`, bold: true })] }),
             ];
-
-            try {
-              const urlKecil = item.fotoURL.replace(
-                "/upload/",
-                "/upload/w_300,h_200,c_fill,q_auto/"
-              );
-              const response = await axios.get(urlKecil, { responseType: "arraybuffer" });
-              const buffer = Buffer.from(response.data);
+            const buffer = await fetchAndCompressImage(item.fotoURL);
+            if (buffer) {
               const image = Media.addImage(doc, buffer, 200, 150);
               children.push(new Paragraph(image));
-            } catch (err) {
-              console.log("⚠️ Gagal fetch image Word:", err.message);
             }
-
-            children.push(
-              new Paragraph(`Gardu: ${item.gardu}`),
-              new Paragraph(`Kerusakan: ${item.kerusakan}`),
-              new Paragraph(`Waktu Kerusakan: ${item.waktuKerusakan}`),
-              new Paragraph(`Perbaikan: ${item.perbaikan}`),
-              new Paragraph(`Waktu Selesai: ${item.selesai}`),
-              new Paragraph(`Status: ${item.status}`),
-              new Paragraph(`By: ${item.by}`),
-              new Paragraph(`Tanggal Upload: ${item.tanggalUpload}`),
-              new Paragraph("----------------------------")
-            );
-
+            children.push(new Paragraph(`Gardu: ${item.gardu}`));
+            children.push(new Paragraph(`Kerusakan: ${item.kerusakan}`));
+            children.push(new Paragraph(`Selesai: ${item.selesai}`));
+            children.push(new Paragraph("-----------------------------"));
             return children;
           })
         ).then((arr) => arr.flat()),
@@ -400,4 +197,4 @@ app.get("/export/word", async (req, res) => {
 
 // -------------------- Run Server --------------------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`))
