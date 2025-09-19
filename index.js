@@ -4,7 +4,9 @@ const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("cloudinary").v2;
 const ExcelJS = require("exceljs");
 const { Document, Packer, Paragraph, TextRun, Media } = require("docx");
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const axios = require("axios");
+const tmp = require("tmp");
+const fs = require("fs");
 
 const app = express();
 app.use(express.json());
@@ -188,7 +190,7 @@ app.get("/laporan", (req, res) => {
 // -------------------- Delete --------------------
 app.get("/delete/:id", (req, res) => {
   const id = parseInt(req.params.id);
-  const index = laporan.findIndex(item => item.id === id);
+  const index = laporan.findIndex((item) => item.id === id);
   if (index !== -1) laporan.splice(index, 1);
   res.redirect("/laporan");
 });
@@ -196,7 +198,7 @@ app.get("/delete/:id", (req, res) => {
 // -------------------- Edit --------------------
 app.get("/edit/:id", (req, res) => {
   const id = parseInt(req.params.id);
-  const item = laporan.find(item => item.id === id);
+  const item = laporan.find((item) => item.id === id);
   if (!item) return res.send("Data tidak ditemukan");
 
   res.send(`
@@ -252,7 +254,7 @@ app.get("/edit/:id", (req, res) => {
 
 app.post("/edit/:id", (req, res) => {
   const id = parseInt(req.params.id);
-  const item = laporan.find(item => item.id === id);
+  const item = laporan.find((item) => item.id === id);
   if (item) {
     const { gardu, kerusakan, perbaikan, selesai, status, by, waktuKerusakan } = req.body;
     Object.assign(item, {
@@ -268,7 +270,7 @@ app.post("/edit/:id", (req, res) => {
   res.redirect("/laporan");
 });
 
-// -------------------- Export Excel & Word --------------------
+// -------------------- Export Excel --------------------
 app.get("/export/excel", async (req, res) => {
   const workbook = new ExcelJS.Workbook();
   const ws = workbook.addWorksheet("Laporan");
@@ -298,24 +300,34 @@ app.get("/export/excel", async (req, res) => {
       selesai: item.selesai,
       status: item.status,
       by: item.by,
-      tanggalUpload: item.tanggalUpload
+      tanggalUpload: item.tanggalUpload,
     });
 
     try {
-      const response = await fetch(item.fotoURL);
-      const buffer = Buffer.from(await response.arrayBuffer());
-      const imageId = workbook.addImage({ buffer, extension: 'jpg' });
+      const response = await axios.get(item.fotoURL, { responseType: "arraybuffer" });
+      const tmpFile = tmp.fileSync({ postfix: ".jpg" });
+      fs.writeFileSync(tmpFile.name, response.data);
+
+      const imageId = workbook.addImage({ filename: tmpFile.name, extension: "jpg" });
       ws.addImage(imageId, { tl: { col: 1, row: row.number - 1 }, ext: { width: 100, height: 80 } });
-    } catch(err){ console.log("Gagal fetch image Excel:", err); }
+
+      tmpFile.removeCallback();
+    } catch (err) {
+      console.log("Gagal fetch image Excel:", err);
+    }
   }
 
-  res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition","attachment; filename=laporan.xlsx");
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.setHeader("Content-Disposition", "attachment; filename=laporan.xlsx");
   await workbook.xlsx.write(res);
   res.end();
 });
 
-app.get("/export/word", async (req,res) => {
+// -------------------- Export Word --------------------
+app.get("/export/word", async (req, res) => {
   const doc = new Document({
     sections: [
       {
@@ -323,7 +335,21 @@ app.get("/export/word", async (req,res) => {
         children: await Promise.all(
           laporan.map(async (item, index) => {
             let children = [
-              new Paragraph(`No: ${index + 1}`),
+              new Paragraph({
+                children: [new TextRun({ text: `No: ${index + 1}`, bold: true })],
+              }),
+            ];
+
+            try {
+              const response = await axios.get(item.fotoURL, { responseType: "arraybuffer" });
+              const buffer = Buffer.from(response.data, "binary");
+              const image = Media.addImage(doc, buffer, 200, 150);
+              children.push(new Paragraph(image));
+            } catch (err) {
+              console.log("Gagal fetch image Word:", err);
+            }
+
+            children.push(
               new Paragraph(`Gardu: ${item.gardu}`),
               new Paragraph(`Kerusakan: ${item.kerusakan}`),
               new Paragraph(`Waktu Kerusakan: ${item.waktuKerusakan}`),
@@ -332,25 +358,18 @@ app.get("/export/word", async (req,res) => {
               new Paragraph(`Status: ${item.status}`),
               new Paragraph(`By: ${item.by}`),
               new Paragraph(`Tanggal Upload: ${item.tanggalUpload}`),
-              new Paragraph("----------------------------"),
-            ];
-
-            try {
-              const response = await fetch(item.fotoURL);
-              const buffer = Buffer.from(await response.arrayBuffer());
-              const image = Media.addImage(doc, buffer, 200, 150);
-              children.splice(1, 0, image);
-            } catch(err){ console.log("Gagal fetch image Word:", err); }
+              new Paragraph("----------------------------")
+            );
 
             return children;
           })
-        ).then(arr => arr.flat())
-      }
-    ]
+        ).then((arr) => arr.flat()),
+      },
+    ],
   });
 
   const buffer = await Packer.toBuffer(doc);
-  res.setHeader("Content-Disposition","attachment; filename=laporan.docx");
+  res.setHeader("Content-Disposition", "attachment; filename=laporan.docx");
   res.send(buffer);
 });
 
